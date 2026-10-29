@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>PDF Coordinate Mapper</title>
+
+<style>
+body{
+    font-family:Tahoma;
+    margin:20px;
+}
+
+.toolbar{
+    margin-bottom:15px;
+}
+
+canvas{
+    border:1px solid #ccc;
+}
+
+#viewer{
+    position:relative;
+    display:inline-block;
+}
+
+#crosshair{
+    position:absolute;
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    background:red;
+    pointer-events:none;
+    display:none;
+    transform:translate(-50%,-50%);
+}
+
+.info{
+    margin-top:15px;
+    background:#f5f5f5;
+    padding:15px;
+    border-radius:8px;
+}
+
+button{
+    padding:8px 15px;
+}
+
+input[type=file]{
+    margin-right:10px;
+}
+</style>
+
+</head>
+
+<body>
+
+<h2>PDF Coordinate Mapper</h2>
+
+<div class="toolbar">
+
+<input type="file" id="pdfFile" accept="application/pdf">
+
+<button onclick="zoomIn()">Zoom +</button>
+
+<button onclick="zoomOut()">Zoom -</button>
+
+<span id="pageInfo"></span>
+
+</div>
+
+<div id="viewer">
+
+<canvas id="pdfCanvas"></canvas>
+
+<div id="crosshair"></div>
+
+</div>
+
+<div class="info">
+
+<div><b>Page:</b> <span id="pageNo">-</span></div>
+
+<div><b>X:</b> <span id="pdfX">0</span></div>
+
+<div><b>Y:</b> <span id="pdfY">0</span></div>
+
+<br>
+
+<textarea
+id="code"
+rows="6"
+style="width:100%;"
+readonly
+></textarea>
+
+<br><br>
+
+<button onclick="copyCode()">
+Copy Code
+</button>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<script>
+
+let pdfDoc = null;
+let currentPage = 1;
+let scale = 1.5;
+
+const canvas = document.getElementById("pdfCanvas");
+const ctx = canvas.getContext("2d");
+
+async function renderPage(pageNum){
+
+    if(!pdfDoc) return;
+
+    const page = await pdfDoc.getPage(pageNum);
+
+    const viewport = page.getViewport({
+        scale
+    });
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+        canvasContext:ctx,
+        viewport
+    }).promise;
+
+    document.getElementById("pageInfo")
+        .innerText =
+        `Page ${pageNum}/${pdfDoc.numPages}`;
+}
+
+document
+.getElementById("pdfFile")
+.addEventListener("change", async e => {
+
+    const file = e.target.files[0];
+
+    if(!file) return;
+
+    const buffer = await file.arrayBuffer();
+
+    pdfDoc = await pdfjsLib
+      .getDocument({data:buffer})
+      .promise;
+
+    currentPage = 1;
+
+    await renderPage(currentPage);
+});
+
+canvas.addEventListener("click", async e => {
+
+    if(!pdfDoc) return;
+
+    const rect =
+        canvas.getBoundingClientRect();
+
+    const clickX =
+        e.clientX - rect.left;
+
+    const clickY =
+        e.clientY - rect.top;
+
+    const marker =
+        document.getElementById("crosshair");
+
+    marker.style.display = "block";
+    marker.style.left = clickX + "px";
+    marker.style.top = clickY + "px";
+
+    const pdfX =
+        clickX / scale;
+
+    const pdfY =
+        (canvas.height - clickY) / scale;
+
+    document.getElementById("pageNo")
+        .innerText = currentPage;
+
+    document.getElementById("pdfX")
+        .innerText = pdfX.toFixed(2);
+
+    document.getElementById("pdfY")
+        .innerText = pdfY.toFixed(2);
+
+    const code = `
+page.drawText("ข้อความ", {
+  x: ${pdfX.toFixed(2)},
+  y: ${pdfY.toFixed(2)},
+  size: 16,
+  font: thaiFont
+});
+`;
+
+    document.getElementById("code")
+        .value = code.trim();
+});
+
+function zoomIn(){
+
+    scale += 0.25;
+
+    renderPage(currentPage);
+}
+
+function zoomOut(){
+
+    if(scale > 0.5){
+
+        scale -= 0.25;
+
+        renderPage(currentPage);
+    }
+}
+
+function copyCode(){
+
+    const txt =
+      document.getElementById("code");
+
+    txt.select();
+
+    document.execCommand("copy");
+
+    alert("Copied");
+}
+
+document.addEventListener("keydown", e => {
+
+    if(!pdfDoc) return;
+
+    if(e.key === "ArrowRight"){
+
+        if(currentPage < pdfDoc.numPages){
+
+            currentPage++;
+
+            renderPage(currentPage);
+        }
+    }
+
+    if(e.key === "ArrowLeft"){
+
+        if(currentPage > 1){
+
+            currentPage--;
+
+            renderPage(currentPage);
+        }
+    }
+});
+
+</script>
+
+</body>
+</html>
